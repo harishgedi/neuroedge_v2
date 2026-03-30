@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>NeuroEdge V2.1: EyeWriter Access Module</title>
-    <!-- Use specific stable versions of MediaPipe tasks-vision API -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/vision_bundle.mjs" type="module" crossorigin="anonymous"></script>
     <style>
         :root {
@@ -99,6 +98,45 @@
             border-color: var(--cyan);
         }
         
+        .upload-section {
+            position: absolute;
+            top: 20px; left: 20px;
+            background: var(--panel);
+            border: var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            width: 300px;
+        }
+
+        .upload-section label {
+            display: block;
+            color: var(--cyan);
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .upload-section input[type="file"] {
+            display: block;
+            width: 100%;
+            margin-bottom: 10px;
+            color: var(--text);
+        }
+
+        .upload-section button {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid var(--cyan);
+            color: var(--cyan);
+            cursor: pointer;
+            border-radius: 4px;
+            transition: 0.3s;
+        }
+
+        .upload-section button:hover {
+            background: rgba(0, 240, 255, 0.2);
+        }
+        
         .loading-screen {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -113,6 +151,13 @@
 </head>
 <body>
     <div class="loading-screen" id="loader">INITIALIZING MEDIA-PIPE WASM...</div>
+
+    <!-- Upload Section for Profile Image -->
+    <div class="upload-section">
+        <label for="profileImageUpload">Upload Profile Image:</label>
+        <input type="file" id="profileImageUpload" name="profileImageUpload" accept="image/*">
+        <button onclick="handleProfileImageUpload()">Upload</button>
+    </div>
 
     <!-- Live Feed for Eye Tracking -->
     <div id="video-container"><video id="webcam" autoplay playsinline></video></div>
@@ -255,6 +300,19 @@
                 currentTarget = null;
             }
         }
+
+        // Handle profile image upload
+        window.handleProfileImageUpload = function() {
+            const fileInput = document.getElementById('profileImageUpload');
+            if (fileInput.files && fileInput.files[0]) {
+                const file = fileInput.files[0];
+                console.log('Profile image uploaded:', file.name);
+                // Add your upload logic here
+                alert('Profile image uploaded: ' + file.name);
+            } else {
+                alert('Please select an image file first');
+            }
+        };
 
         // Attach dummy interactions to buttons
         document.querySelectorAll('.btn').forEach(btn => {
