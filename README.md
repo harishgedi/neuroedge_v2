@@ -1,40 +1,18 @@
-# Project Title
+# Title
 
-Description of the project...
+## 1. Introduction
 
-# Table of Contents
+Content...
 
-1. Introduction
-2. Features
-3. Getting Started
-4. Live Prototype & Visual Evidence
-   - EyeWriter Hands-Free Module
-   - Profile Image Upload Interface
-5. License
+## 2. Getting Started
 
-# Introduction
+Content...
 
-This project aims at...
+## 3. Secure Operator Authorization
 
-# Features
+Content...
 
-- Feature 1
-- Feature 2
+## 4. Profile Image Upload Interface
+This section describes the secure profile image upload capability, which allows users to upload images with real-time visual feedback. Below is a screenshot reference:
+![Profile Image Upload](frontend/assets/screenshots/profile_upload.png)
 
-# Getting Started
-
-To get started with the project, follow these instructions...
-
-# Live Prototype & Visual Evidence
-
-## EyeWriter Hands-Free Module
-
-Details about the EyeWriter Hands-Free Module...
-
-## Profile Image Upload Interface
-
-This section describes how to upload a profile image, including any requirements and usage examples.
-
-# License
-
-This project is licensed under the MIT License.
