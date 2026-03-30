@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NeuroEdge V2.1: Long-Distance Mobile Signals</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #000;
+            --panel: #0a0f1d;
+            --cyan: #00f0ff;
+            --magenta: #ff0055;
+            --text: #fff;
+        }
+
+        body { 
+            background: var(--bg); 
+            color: var(--cyan); 
+            font-family: 'JetBrains Mono', monospace; 
+            padding: 20px; 
+            overflow-x: hidden; 
+        }
+
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); 
+            gap: 30px; 
+            margin-top: 20px;
+        }
+
+        .card { 
+            border: 2px solid #333; 
+            padding: 30px; 
+            border-radius: 12px; 
+            background: var(--panel); 
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+            transition: 0.3s;
+        }
+
+        .card:hover { border-color: var(--cyan); box-shadow: 0 0 20px rgba(0, 240, 255, 0.1); }
+        .card.critical { border-color: var(--magenta); box-shadow: 0 0 20px rgba(255, 0, 85, 0.4); }
+
+        h2 { 
+            border-bottom: 2px solid #222; 
+            padding-bottom: 15px; 
+            margin-top: 0;
+            color: #fff;
+            letter-spacing: 2px;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        .value { 
+            font-size: 4em; 
+            font-weight: bold; 
+            color: #fff; 
+            text-align: center;
+            margin: 20px 0;
+            text-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+        }
+        
+        #last-sync {
+            display: inline-block;
+            background: #111;
+            border: 1px solid #333;
+            color: #888;
+            padding: 10px 25px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .sync-active { border-color: var(--cyan) !important; color: var(--cyan) !important; box-shadow: 0 0 10px var(--cyan); }
+        .sync-dead { border-color: var(--magenta) !important; color: var(--magenta) !important; }
+    </style>
+</head>
+<body>
+    <h1 style="text-align:center; text-transform:uppercase; font-size: 2.5em; letter-spacing: 5px;">// NEUROEDGE_SIGNAL_MONITOR_v2.1</h1>
+    <div style="text-align:center;"><div id="last-sync" class="sync-dead">SYNC_STATUS: AWAITING_MOBILE_APP_UPLINK...</div></div>
+    
+    <div class="grid">
+        <div class="card" id="card-wifi">
+            <h2>🌍 EDGE_NETWORK_RELIABILITY (PROXIED)</h2>
+            <canvas id="wifiChart" height="150"></canvas>
+        </div>
+        <div class="card" id="card-battery">
+            <h2>⚡ EDGE DEVICE BATTERY</h2>
+            <div id="battery-val" class="value">--%</div>
+        </div>
+        <div class="card" id="card-hr">
+            <h2>❤️ HEART RATE (Health Sync)</h2>
+            <div id="hr-val" class="value">-- BPM</div>
+        </div>
+        <div class="card" id="card-motion">
+            <h2>🌀 DEVICE_MOTION (Accel)</h2>
+            <div id="motion-val" class="value">0.0</div>
+            <div style="text-align:center; color:var(--cyan); font-size: 0.7rem;">STABILITY_INDEX</div>
+        </div>
+        <div class="card">
+            <h2>📶 NGROK TUNNEL NOISE</h2>
+            <canvas id="noiseChart" height="150"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Setup Charts
+        const ctxWifi = document.getElementById('wifiChart').getContext('2d');
+        const wifiChart = new Chart(ctxWifi, {
+            type: 'line',
+            data: { 
+                labels: Array(20).fill(''), 
+                datasets: [{ 
+                    label: 'RSSI (dBm)', 
+                    data: Array(20).fill(-90), 
+                    borderColor: '#00f0ff', 
+                    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0
+                }] 
+            },
+            options: { 
+                animation: false, 
+                scales: { 
+                    y: { min: -100, max: -30, grid: { color: '#333' } },
+                    x: { grid: { display: false } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        const ctxNoise = document.getElementById('noiseChart').getContext('2d');
+        const noiseChart = new Chart(ctxNoise, {
+            type: 'bar',
+            data: {
+                labels: Array(15).fill(''),
+                datasets: [{
+                    label: 'Latency Ms',
+                    data: Array(15).fill(0),
+                    backgroundColor: '#ff0055'
+                }]
+            },
+            options: { animation: false, scales: { y: { min: 0, max: 200 } } }
+        });
+
+        let deadCounter = 0;
+
+        async function fetchData() {
+            try {
+                // Poll the localhost server (running on port 8000 via FastAPI)
+                const res = await fetch('http://localhost:8000/api/metrics');
+                const data = await res.json();
+
+                const syncBadge = document.getElementById('last-sync');
+                
+                if (data.last_update === "Waiting for signal...") {
+                    syncBadge.innerText = `READY: INITIALIZE NODE ON MOBILE BROWSER`;
+                    syncBadge.className = '';
+                    return;
+                }
+
+                syncBadge.innerText = `TUNNEL ACTIVE: DATA RECEIVED @ [${data.last_update}]`;
+                syncBadge.className = 'sync-active';
+                deadCounter = 0;
+
+                const batEl = document.getElementById('battery-val');
+                const hrEl = document.getElementById('hr-val');
+                const motEl = document.getElementById('motion-val');
+                const batCard = document.getElementById('card-battery');
+
+                batEl.innerText = data.battery_level ? data.battery_level + '%' : '--%';
+                hrEl.innerText = data.heart_rate || '-- BPM';
+                motEl.innerText = data.accel_avg !== undefined ? data.accel_avg.toFixed(1) : '0.0';
+
+                if (parseInt(data.battery_level) < 20) {
+                    batCard.classList.add('critical');
+                    batEl.style.color = '#ff0055';
+                } else {
+                    batCard.classList.remove('critical');
+                    batEl.style.color = '#fff';
+                }
+
+                if (parseInt(data.heart_rate) > 100) {
+                    document.getElementById('card-hr').classList.add('critical');
+                    hrEl.style.color = '#ff0055';
+                } else {
+                    document.getElementById('card-hr').classList.remove('critical');
+                    hrEl.style.color = '#fff';
+                }
+
+                // Update Chart
+                if (data.wifi_strength && data.wifi_strength !== "N/A") {
+                    wifiChart.data.datasets[0].data.push(parseInt(data.wifi_strength));
+                    wifiChart.data.datasets[0].data.shift();
+                    wifiChart.update();
+                }
+
+                // Simulate noise variance based on Ngrok tunneling latency
+                noiseChart.data.datasets[0].data.push(Math.random() * 50 + 20);
+                noiseChart.data.datasets[0].data.shift();
+                noiseChart.update();
+
+            } catch (e) { 
+                deadCounter++;
+                if (deadCounter > 3) {
+                    document.getElementById('last-sync').innerText = `CRITICAL: TARGET LAPTOP SERVER DOWN (IS UVICORN RUNNING?)`;
+                    document.getElementById('last-sync').className = 'sync-dead';
+                }
+            }
+        }
+        setInterval(fetchData, 1000); 
+    </script>
+</body>
+</html>

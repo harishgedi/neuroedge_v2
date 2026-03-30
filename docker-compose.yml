@@ -1,0 +1,118 @@
+# NeuroEdge v2 — Docker Compose
+# Full local stack: API + IoT Simulator + Prometheus + Grafana
+# Memory-optimised for minimal hardware (total ~900MB in use)
+#
+# Start: docker compose up --build -d
+# Stop:  docker compose down
+# Logs:  docker compose logs -f
+
+services:
+
+  # ── FastAPI Backend ─────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: neuroedge-api:local
+    container_name: neuroedge-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "sqlite+aiosqlite:////data/neuroedge.db"
+      APP_ENV: development
+      DEBUG: "false"
+      IOT_NODE_COUNT: "8"
+      ANOMALY_THRESHOLD: "2.5"
+      RELIABILITY_TARGET: "0.9995"
+    volumes:
+      - neuroedge-data:/data
+      - ./frontend:/app/frontend:ro
+    mem_limit: 384m
+    memswap_limit: 384m
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - neuroedge-net
+
+  # ── IoT + VNF Simulator ─────────────────────────────────────────────────
+  simulator:
+    image: neuroedge-api:local
+    container_name: neuroedge-sim
+    command: ["python", "edge/iot_sim/simulator.py"]
+    environment:
+      API_BASE: "http://api:8000"
+      PYTHONPATH: /app
+    volumes:
+      - ./edge:/app/edge:ro
+    mem_limit: 192m
+    memswap_limit: 192m
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - neuroedge-net
+
+  # ── Prometheus — Metrics Collection ────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: neuroedge-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=6h'
+      - '--storage.tsdb.retention.size=100MB'
+      - '--web.enable-lifecycle'
+      - '--log.level=warn'
+    mem_limit: 256m
+    memswap_limit: 256m
+    restart: unless-stopped
+    networks:
+      - neuroedge-net
+
+  # ── Grafana — Dashboards ────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.4
+    container_name: neuroedge-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: neuroedge
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/neuroedge.json
+      GF_LOG_LEVEL: warn
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    mem_limit: 192m
+    memswap_limit: 192m
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - neuroedge-net
+
+volumes:
+  neuroedge-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  neuroedge-net:
+    driver: bridge

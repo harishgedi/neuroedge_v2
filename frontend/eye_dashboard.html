@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NeuroEdge V2.1: EyeWriter Access Module</title>
+    <!-- Use specific stable versions of MediaPipe tasks-vision API -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/vision_bundle.mjs" type="module" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            --bg: #000;
+            --panel: #0a0f1d;
+            --cyan: #00f0ff;
+            --magenta: #ff0055;
+            --glass: rgba(0, 240, 255, 0.05);
+            --border: 2px solid #333;
+            --text: #fff;
+        }
+
+        body { 
+            background: var(--bg); 
+            color: var(--cyan); 
+            font-family: 'JetBrains Mono', monospace; 
+            overflow: hidden; 
+            margin: 0; 
+        }
+        
+        #video-container { 
+            position: absolute; 
+            top: 20px; right: 20px; 
+            width: 320px; 
+            border: var(--border); 
+            border-radius: 8px; 
+            opacity: 0.9;
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+            background: var(--panel);
+        }
+        #webcam { width: 100%; border-radius: 6px; }
+        
+        #cursor { 
+            width: 30px; 
+            height: 30px; 
+            border: 3px solid var(--magenta); 
+            border-radius: 50%; 
+            position: absolute; 
+            pointer-events: none; 
+            transition: all 0.1s ease-out; 
+            z-index: 9999;
+            box-shadow: 0 0 10px var(--magenta), inset 0 0 5px var(--magenta);
+            background: rgba(255, 0, 85, 0.2);
+            transform: translate(-50%, -50%);
+        }
+        
+        .header-title { 
+            text-align: center; 
+            font-size: 2em; 
+            text-transform: uppercase; 
+            letter-spacing: 5px; 
+            border-bottom: var(--border); 
+            padding: 25px 0; 
+            margin: 0; 
+            background: var(--panel); 
+            font-family: 'Orbitron', sans-serif;
+            color: var(--cyan);
+            text-shadow: 0 0 15px var(--cyan);
+        }
+        
+        .control-panel { 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 30px; 
+            margin: 40px auto; 
+            padding: 30px;
+            max-width: 1200px;
+            height: 65vh;
+        }
+        
+        .btn { 
+            border: var(--border); 
+            background: var(--glass);
+            color: #fff;
+            padding: 40px; 
+            text-align: center; 
+            font-size: 1.5rem; 
+            font-weight: bold;
+            transition: 0.3s; 
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+        }
+        
+        .btn:hover { border-color: var(--cyan); box-shadow: 0 0 20px rgba(0, 240, 255, 0.2); color: var(--cyan); }
+        
+        .btn.dwelling { 
+            background: rgba(0, 240, 255, 0.4); 
+            box-shadow: 0 0 30px var(--cyan) inset;
+            transform: scale(0.98);
+            border-color: var(--cyan);
+        }
+        
+        .loading-screen {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #0f172a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            font-size: 2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-screen" id="loader">INITIALIZING MEDIA-PIPE WASM...</div>
+
+    <!-- Live Feed for Eye Tracking -->
+    <div id="video-container"><video id="webcam" autoplay playsinline></video></div>
+    <div id="cursor"></div>
+
+    <!-- Interactive Controls -->
+    <h1 class="header-title">EyeWriter Interface &mdash; Hands-Free Deck</h1>
+    <div class="control-panel">
+        <div class="btn" id="btn-1">INITIATE SLA REPAIR [URLLC]</div>
+        <div class="btn" id="btn-2">MONITOR MOBILE BIO-METRICS</div>
+        <div class="btn" id="btn-3">RUN 6G DIAGNOSTICS</div>
+        <div class="btn" style="border-color: #ff0055; color: #ff0055;" id="btn-4">EMERGENCY LOCKDOWN</div>
+    </div>
+
+    <script type="module">
+        import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/vision_bundle.mjs";
+
+        const video = document.getElementById("webcam");
+        const cursor = document.getElementById("cursor");
+        const loader = document.getElementById("loader");
+        let faceLandmarker;
+        let lastVideoTime = -1;
+        let dwellTimer = null;
+        let currentTarget = null;
+        let isRunning = false;
+
+        async function createEyeTracker() {
+            try {
+                const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/wasm");
+                faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+                    baseOptions: { 
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`, 
+                        delegate: "GPU" 
+                    },
+                    outputFaceBlendshapes: false,
+                    runningMode: "VIDEO",
+                    numFaces: 1
+                });
+
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                
+                video.addEventListener("loadeddata", () => {
+                    loader.style.display = "none";
+                    isRunning = true;
+                    requestAnimationFrame(renderLoop);
+                });
+            } catch(e) {
+                loader.innerHTML = "ERROR: Webcam or GPU WASM failed.<br><br>Grant Permissions and Refresh.";
+                loader.style.color = "#ff0055";
+            }
+        }
+
+        // Connect to WebSocket for Remote Gaze Sync
+        const socket = new WebSocket(`ws://${location.host}/ws/desktop_${Math.random().toString(36).substring(7)}`);
+        
+        socket.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "REMOTE_GAZE_UPDATE") {
+                const { x, y } = msg.payload;
+                
+                // Move cursor based on Remote Mobile Input
+                // Note: We use the same sensitivity mapping as the local tracker
+                const sensitivity = 2.0;
+                const finalX = (x - 0.5) * window.innerWidth * sensitivity + (window.innerWidth / 2);
+                const finalY = (y - 0.5) * window.innerHeight * sensitivity + (window.innerHeight / 2);
+                
+                updateCursorPosition(finalX, finalY);
+            }
+        };
+
+        function updateCursorPosition(x, y) {
+            const finalX = Math.max(0, Math.min(window.innerWidth, x));
+            const finalY = Math.max(0, Math.min(window.innerHeight, y));
+
+            cursor.style.left = `${finalX}px`;
+            cursor.style.top = `${finalY}px`;
+
+            checkDwell(finalX, finalY);
+        }
+
+        function renderLoop() {
+            if (!isRunning) return;
+            if (video.currentTime !== lastVideoTime && faceLandmarker) {
+                const results = faceLandmarker.detectForVideo(video, performance.now());
+                if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+                    
+                    // Simple nose-pointing logic (Landmark 1 is the nose tip/bridge)
+                    const nose = results.faceLandmarks[0][1]; 
+                    
+                    // Scale local coordinates
+                    const rawX = (1 - nose.x);
+                    const rawY = nose.y;
+
+                    const sensitivity = 2.0; 
+                    const x = (rawX - 0.5) * window.innerWidth * sensitivity + (window.innerWidth / 2);
+                    const y = (rawY - 0.5) * window.innerHeight * sensitivity + (window.innerHeight / 2);
+                    
+                    updateCursorPosition(x, y);
+                }
+                lastVideoTime = video.currentTime;
+            }
+            requestAnimationFrame(renderLoop);
+        }
+
+        function checkDwell(x, y) {
+            // Hide cursor temporarily so document.elementFromPoint doesn't pick up the cursor itself
+            cursor.style.display = 'none';
+            const element = document.elementFromPoint(x, y);
+            cursor.style.display = 'block';
+
+            if (element && element.classList.contains('btn')) {
+                if (currentTarget !== element) {
+                    clearTimeout(dwellTimer);
+                    currentTarget = element;
+                    element.classList.add('dwelling');
+                    
+                    // 1.5 Second Dwell to Click
+                    dwellTimer = setTimeout(() => {
+                        element.click();
+                        
+                        // Visual Execution Confirmation
+                        const originalText = element.textContent;
+                        element.classList.remove('dwelling');
+                        element.style.background = element.style.borderColor || '#00f0ff';
+                        element.style.color = '#000';
+                        element.textContent = "EXECUTING...";
+                        
+                        setTimeout(() => {
+                            element.style.background = '';
+                            element.style.color = '';
+                            element.textContent = originalText;
+                        }, 800);
+                        
+                    }, 1500); 
+                }
+            } else {
+                clearTimeout(dwellTimer);
+                if (currentTarget) currentTarget.classList.remove('dwelling');
+                currentTarget = null;
+            }
+        }
+
+        // Attach dummy interactions to buttons
+        document.querySelectorAll('.btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const action = e.target.textContent;
+                console.log(`Action triggered: ${action}`);
+                if (action.includes("MOBILE BIO-METRICS")) {
+                    window.open("health_dashboard.html", "_blank");
+                }
+            });
+        });
+
+        // Boots process
+        createEyeTracker();
+    </script>
+</body>
+</html>

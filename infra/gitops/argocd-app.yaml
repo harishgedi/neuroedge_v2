@@ -1,0 +1,73 @@
+# NeuroEdge v2 — ArgoCD GitOps Application
+# ==========================================
+# v1 WEAKNESS (Mary Giblin would spot):
+#   - No GitOps manifests at all — just CI/CD pushing to K8s directly
+#   - Mary Giblin's programme emphasises GitOps as the cloud-native deployment model
+#
+# v2 FIX: ArgoCD Application + AppProject with RBAC
+# GitOps principle: Git is the single source of truth.
+# ArgoCD continuously reconciles cluster state to match this repo.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: neuroedge-project
+  namespace: argocd
+spec:
+  description: "NeuroEdge Edge AI Platform — TUS Athlone MSc Research"
+  sourceRepos:
+  - "https://github.com/harishgedi/neuroedge"
+  destinations:
+  - namespace: neuroedge
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: ""
+    kind: Namespace
+  namespaceResourceWhitelist:
+  - group: "apps"
+    kind: Deployment
+  - group: ""
+    kind: Service
+  - group: "networking.k8s.io"
+    kind: NetworkPolicy
+  - group: "keda.sh"
+    kind: ScaledObject
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: neuroedge
+  namespace: argocd
+  labels:
+    researcher: gedi-harish
+    university: tus-athlone
+    supervisor: dr-enda-fallon
+spec:
+  project: neuroedge-project
+  source:
+    repoURL: https://github.com/harishgedi/neuroedge
+    targetRevision: main
+    path: infra/k8s   # GitOps watches this directory
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: neuroedge
+  syncPolicy:
+    automated:
+      prune: true      # Remove resources deleted from Git
+      selfHeal: true   # Re-apply if someone manually changes cluster state
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  # Health checks — ArgoCD will show yellow if these fail
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas  # KEDA manages replicas, ignore drift

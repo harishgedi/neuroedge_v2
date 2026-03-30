@@ -1,0 +1,194 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": {"list": []},
+  "description": "NeuroEdge v2 — Edge AI Reliability Monitor | TUS MSc Research",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": 1,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 100,
+      "title": "System Overview",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.95},
+              {"color": "green", "value": 0.999}
+            ]
+          },
+          "unit": "percentunit",
+          "min": 0, "max": 1,
+          "mappings": []
+        }
+      },
+      "gridPos": {"h": 6, "w": 4, "x": 0, "y": 1},
+      "id": 1,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true},
+      "title": "Network Reliability",
+      "type": "gauge",
+      "targets": [{"datasource": {"type": "prometheus"}, "expr": "neuroedge_network_reliability", "legendFormat": "Reliability"}]
+    },
+    {
+      "datasource": {"type": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.5},
+              {"color": "red", "value": 1.0}
+            ]
+          },
+          "unit": "short", "min": 0, "max": 3
+        }
+      },
+      "gridPos": {"h": 6, "w": 4, "x": 4, "y": 1},
+      "id": 2,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true},
+      "title": "Anomaly Score (0-3)",
+      "type": "gauge",
+      "targets": [{"datasource": {"type": "prometheus"}, "expr": "neuroedge_anomaly_score * 3", "legendFormat": "Score"}]
+    },
+    {
+      "datasource": {"type": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 0.75}]},
+          "unit": "percentunit", "min": 0, "max": 1
+        }
+      },
+      "gridPos": {"h": 6, "w": 4, "x": 8, "y": 1},
+      "id": 3,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true},
+      "title": "Operator Fatigue Score",
+      "type": "gauge",
+      "targets": [{"datasource": {"type": "prometheus"}, "expr": "neuroedge_fatigue_score", "legendFormat": "Fatigue"}]
+    },
+    {
+      "datasource": {"type": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}},
+      "gridPos": {"h": 3, "w": 4, "x": 12, "y": 1},
+      "id": 4,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "value", "colorMode": "background"},
+      "title": "WebSocket Clients",
+      "type": "stat",
+      "targets": [{"datasource": {"type": "prometheus"}, "expr": "neuroedge_ws_connections", "legendFormat": "Clients"}]
+    },
+    {
+      "datasource": {"type": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "short"}},
+      "gridPos": {"h": 3, "w": 4, "x": 16, "y": 1},
+      "id": 5,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "value", "colorMode": "value"},
+      "title": "Total Anomalies Detected",
+      "type": "stat",
+      "targets": [{"datasource": {"type": "prometheus"}, "expr": "neuroedge_anomaly_total", "legendFormat": "Anomalies"}]
+    },
+    {
+      "datasource": {"type": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "s"}},
+      "gridPos": {"h": 3, "w": 4, "x": 20, "y": 1},
+      "id": 6,
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "value", "colorMode": "value"},
+      "title": "System Uptime",
+      "type": "stat",
+      "targets": [{"datasource": {"type": "prometheus"}, "expr": "neuroedge_uptime_seconds", "legendFormat": "Uptime"}]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 7},
+      "id": 101,
+      "title": "Network Telemetry — Time Series",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 2, "fillOpacity": 10},
+          "unit": "percentunit", "min": 0, "max": 1
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 10,
+      "options": {"tooltip": {"mode": "multi"}, "legend": {"displayMode": "list", "placement": "bottom"}},
+      "title": "Per-Node Reliability Over Time",
+      "type": "timeseries",
+      "targets": [
+        {"datasource": {"type": "prometheus"}, "expr": "neuroedge_node_reliability", "legendFormat": "{{node}} ({{gen}}/{{slice}})"}
+      ]
+    },
+    {
+      "datasource": {"type": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 2, "fillOpacity": 15},
+          "unit": "short", "min": 0
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 11,
+      "options": {"tooltip": {"mode": "multi"}, "legend": {"displayMode": "list", "placement": "bottom"}},
+      "title": "Anomaly Score Over Time (CUSUM+EWMA+Z-score)",
+      "type": "timeseries",
+      "targets": [
+        {"datasource": {"type": "prometheus"}, "expr": "neuroedge_anomaly_score", "legendFormat": "Composite Score"},
+        {"datasource": {"type": "prometheus"}, "expr": "neuroedge_anomaly_total", "legendFormat": "Total Anomalies"}
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16},
+      "id": 102,
+      "title": "Per-Node Latency",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"lineWidth": 1},
+          "unit": "ms", "min": 0
+        }
+      },
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 17},
+      "id": 20,
+      "options": {"tooltip": {"mode": "multi"}, "legend": {"displayMode": "table", "placement": "right", "calcs": ["mean", "max"]}},
+      "title": "Node Latency ms (5G URLLC SLA ≤10ms | eMBB ≤100ms | mMTC ≤1000ms)",
+      "type": "timeseries",
+      "targets": [
+        {"datasource": {"type": "prometheus"}, "expr": "neuroedge_node_latency_ms", "legendFormat": "{{node}}"},
+        {"datasource": {"type": "prometheus"}, "expr": "10", "legendFormat": "URLLC SLA (10ms)"},
+        {"datasource": {"type": "prometheus"}, "expr": "100", "legendFormat": "eMBB SLA (100ms)"}
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["neuroedge", "tus", "edge-ai", "5g"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "NeuroEdge v2 — Edge AI Monitor",
+  "uid": "neuroedge-v2",
+  "version": 1
+}

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroEdge | Remote Node Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #030712;
+            --surface: #111827;
+            --accent: #06b6d4;
+            --accent-glow: rgba(6, 182, 212, 0.4);
+            --danger: #ef4444;
+            --success: #10b981;
+            --text: #f9fafb;
+            --text-dim: #9ca3af;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 2rem;
+            background-image: 
+                radial-gradient(circle at 20% 30%, rgba(6,182,212,0.05), transparent),
+                radial-gradient(circle at 80% 70%, rgba(139,92,246,0.05), transparent);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 1rem;
+        }
+
+        .logo { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.04em; }
+        .logo span { color: var(--accent); }
+
+        .stats-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            padding: 1.5rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.05);
+            text-align: center;
+        }
+
+        .stat-value { font-size: 2.5rem; font-weight: 700; font-family: 'JetBrains Mono'; color: var(--accent); }
+        .stat-label { color: var(--text-dim); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.1em; }
+
+        .nodes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .edge-card {
+            background: var(--surface);
+            border-radius: 16px;
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .edge-card:hover { border-color: var(--accent); transform: translateY(-4px); box-shadow: 0 12px 40px -12px var(--accent-glow); }
+
+        .edge-card header { border: none; margin-bottom: 1rem; padding: 0; }
+        .edge-card .node-status { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); }
+
+        .metric-row { display: flex; justify-content: space-between; margin-bottom: 0.8rem; padding-bottom: 0.4rem; border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .metric-label { color: var(--text-dim); font-size: 0.85rem; }
+        .metric-value { font-family: 'JetBrains Mono'; font-weight: 600; }
+
+        .empty-state { text-align: center; color: var(--text-dim); padding: 4rem; grid-column: 1 / -1; }
+
+        footer { margin-top: 4rem; text-align: center; font-size: 0.8rem; color: var(--text-dim); border-top: 1px solid rgba(255,255,255,0.05); padding-top: 2rem; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">NeuroEdge <span>RemoteNodes</span></div>
+        <div id="connection-status" style="font-size: 0.8rem; color: var(--text-dim);">
+            <span class="dot" style="display:inline-block; margin-right:4px;"></span> Cloud Pipeline Active
+        </div>
+    </header>
+
+    <div class="stats-summary">
+        <div class="stat-card">
+            <div class="stat-value" id="val-total">0</div>
+            <div class="stat-label">Total Remote Nodes</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="val-5g">0%</div>
+            <div class="stat-label">5G/Fiber Mix</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="val-anom">0</div>
+            <div class="stat-label">Motion Anomalies</div>
+        </div>
+    </div>
+
+    <div class="nodes-grid" id="nodes-grid">
+        <div class="empty-state">No remote edge devices connected. Start telemetry on a mobile client.</div>
+    </div>
+
+    <footer>
+        TUS MSc Cloud-Native Research Integration | Edge Orchestration by Harish Gedi
+    </footer>
+
+    <script>
+        const WS_URL = `ws://${location.host}/ws/edge-dashboard-${Date.now()}`;
+        const grid = document.getElementById("nodes-grid");
+        const nodes = {};
+
+        function connect() {
+            const ws = new WebSocket(WS_URL);
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.type === "EDGE_UPDATE") {
+                    updateNode(msg.payload);
+                }
+            };
+            ws.onclose = () => setTimeout(connect, 3000);
+        }
+
+        function updateNode(p) {
+            nodes[p.node_id] = { ...p, last_update: Date.now() };
+            render();
+        }
+
+        function render() {
+            const ids = Object.keys(nodes).filter(i => Date.now() - nodes[i].last_update < 30000);
+            document.getElementById("val-total").textContent = ids.length;
+            
+            const g5 = ids.filter(i => nodes[i].network === '5G').length;
+            document.getElementById("val-5g").textContent = ids.length > 0 ? Math.round((g5/ids.length)*100) + "%" : "0%";
+
+            if (ids.length === 0) {
+                grid.innerHTML = '<div class="empty-state">No remote edge devices connected.</div>';
+                return;
+            }
+
+            grid.innerHTML = ids.map(id => {
+                const n = nodes[id];
+                return `
+                    <div class="edge-card">
+                        <header>
+                            <div class="node-status"><span class="dot"></span> ${id.toUpperCase()}</div>
+                        </header>
+                        <div class="metric-row">
+                            <span class="metric-label">Network Type</span>
+                            <span class="metric-value" style="color:var(--accent)">${n.network}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Latency (RTT)</span>
+                            <span class="metric-value">${n.latency}ms</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Battery Level</span>
+                            <span class="metric-value">${n.battery}%</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Motion Vector</span>
+                            <span class="metric-value">${n.accel} G</span>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        connect();
+    </script>
+</body>
+</html>

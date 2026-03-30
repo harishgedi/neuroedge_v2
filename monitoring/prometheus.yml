@@ -1,0 +1,25 @@
+# NeuroEdge v2 — Prometheus scrape configuration
+# Scrapes custom metrics from the FastAPI /metrics endpoint every 15s.
+# Custom metrics exposed:
+#   neuroedge_anomaly_score   — KEDA trigger for K8s HPA
+#   neuroedge_network_reliability — per-node SLA tracking
+#   neuroedge_fatigue_score   — operator biometric alert
+#   neuroedge_anomaly_total   — cumulative anomaly counter
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    project: neuroedge
+    environment: local
+
+scrape_configs:
+  - job_name: neuroedge-api
+    static_configs:
+      - targets: ["api:8000"]
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

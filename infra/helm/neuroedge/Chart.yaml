@@ -1,0 +1,15 @@
+apiVersion: v2
+name: neuroedge
+description: "NeuroEdge v2 — Edge AI Reliability Monitor Helm Chart"
+type: application
+version: 2.0.0
+appVersion: "2.0.0"
+keywords:
+  - edge-ai
+  - 5g
+  - cloud-native
+  - tus
+  - anomaly-detection
+maintainers:
+  - name: Harish Gedi
+    email: harish.gedi@stu.tus.ie

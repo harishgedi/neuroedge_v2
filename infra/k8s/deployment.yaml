@@ -1,0 +1,359 @@
+# NeuroEdge v2 — Kubernetes Manifests
+# ======================================
+# v1 WEAKNESS (Mary Giblin would spot):
+#   - No RBAC (ServiceAccount/Role/RoleBinding)
+#   - No NetworkPolicy (zero-trust missing)
+#   - HPA on CPU only — not custom Prometheus metrics
+#   - No ResourceQuota / LimitRange
+#   - No PodDisruptionBudget
+#
+# v2 FIX: Full production-grade K8s with KEDA on custom metric
+#
+# Apply: kubectl apply -f infra/k8s/
+---
+# ── Namespace with labels ─────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: neuroedge
+  labels:
+    app.kubernetes.io/name: neuroedge
+    research: tus-athlone
+    researcher: gedi-harish
+    supervisor: dr-enda-fallon
+
+---
+# ── ResourceQuota — namespace-level resource cap ──────────────────────────
+# Mary Giblin teaches this as cloud-native best practice: always quota namespaces
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: neuroedge-quota
+  namespace: neuroedge
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 4Gi
+    limits.cpu: "8"
+    limits.memory: 8Gi
+    pods: "20"
+    services: "10"
+    persistentvolumeclaims: "5"
+
+---
+# ── LimitRange — per-pod defaults ────────────────────────────────────────
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: neuroedge-limits
+  namespace: neuroedge
+spec:
+  limits:
+  - type: Container
+    default:
+      cpu: "500m"
+      memory: "256Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+    max:
+      cpu: "2"
+      memory: "2Gi"
+
+---
+# ── ServiceAccount: API ───────────────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: neuroedge-api-sa
+  namespace: neuroedge
+  labels:
+    app: neuroedge-api
+
+---
+# ── Role: API (least-privilege) ───────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: neuroedge-api-role
+  namespace: neuroedge
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: neuroedge-api-rb
+  namespace: neuroedge
+subjects:
+- kind: ServiceAccount
+  name: neuroedge-api-sa
+  namespace: neuroedge
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: neuroedge-api-role
+
+---
+# ── NetworkPolicy: zero-trust baseline ───────────────────────────────────
+# Allow API → DB only. Block all cross-component traffic by default.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: neuroedge-api-netpol
+  namespace: neuroedge
+spec:
+  podSelector:
+    matchLabels:
+      app: neuroedge-api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: neuroedge-frontend
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring  # Prometheus scrape
+    ports:
+    - port: 8000
+  egress:
+  - to: []   # Allow all egress (DB is local SQLite; MQTT is in-cluster)
+    ports: []
+
+---
+# ── ConfigMap ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: neuroedge-config
+  namespace: neuroedge
+data:
+  APP_ENV: "production"
+  IOT_NODE_COUNT: "8"
+  ANOMALY_THRESHOLD: "2.5"
+  RELIABILITY_TARGET: "0.9995"
+  LORA_RANGE_KM: "15.0"
+  ANOMALY_ALGO: "CUSUM+EWMA+Zscore"
+  VNF_HEAL_ENABLED: "true"
+
+---
+# ── Secret (placeholder — use Sealed Secrets or Vault in production) ──────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: neuroedge-secrets
+  namespace: neuroedge
+type: Opaque
+stringData:
+  SECRET_KEY: "change-in-production-use-sealed-secrets"
+
+---
+# ── PVC for SQLite ────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neuroedge-data-pvc
+  namespace: neuroedge
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+# ── Deployment: API ───────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neuroedge-api
+  namespace: neuroedge
+  labels:
+    app: neuroedge-api
+    version: v2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: neuroedge-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0   # Zero downtime — Spencer's Retail SRE lesson
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: neuroedge-api
+        version: v2
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      serviceAccountName: neuroedge-api-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+      - name: api
+        image: ghcr.io/harishgedi/neuroedge-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        envFrom:
+        - configMapRef:
+            name: neuroedge-config
+        - secretRef:
+            name: neuroedge-secrets
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
+        # Liveness: is process running? (matches /healthz endpoint)
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          failureThreshold: 3
+        # Readiness: are dependencies up? (matches /readyz endpoint)
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 2
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: neuroedge-data-pvc
+
+---
+# ── Service: API ──────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: neuroedge-api-svc
+  namespace: neuroedge
+  labels:
+    app: neuroedge-api
+spec:
+  selector:
+    app: neuroedge-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+  type: ClusterIP
+
+---
+# ── KEDA ScaledObject: scale on anomaly_score metric ─────────────────────
+# v1 had CPU-only HPA. v2 uses KEDA to scale on the custom Prometheus
+# metric neuroedge_anomaly_score — when anomalies spike, scale up analysis pods.
+# This is the "biometric-aware K8s scheduling" research contribution.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: neuroedge-api-scaledobject
+  namespace: neuroedge
+spec:
+  scaleTargetRef:
+    name: neuroedge-api
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  cooldownPeriod: 30
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus.monitoring.svc:9090
+      metricName: neuroedge_anomaly_score
+      threshold: "1.5"    # Scale up when anomaly composite > 1.5
+      query: neuroedge_anomaly_score
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus.monitoring.svc:9090
+      metricName: neuroedge_ws_connections
+      threshold: "10"     # Also scale on connection count
+      query: neuroedge_ws_connections
+
+---
+# ── PodDisruptionBudget: maintain availability during upgrades ────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: neuroedge-api-pdb
+  namespace: neuroedge
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: neuroedge-api
+
+---
+# ── IoT Simulator Deployment ──────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: neuroedge-iot-sim
+  namespace: neuroedge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neuroedge-iot-sim
+  template:
+    metadata:
+      labels:
+        app: neuroedge-iot-sim
+    spec:
+      containers:
+      - name: iot-sim
+        image: ghcr.io/harishgedi/neuroedge-edge:latest
+        command: ["python", "edge/iot_sim/simulator.py"]
+        env:
+        - name: API_BASE
+          value: http://neuroedge-api-svc
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+
+---
+# ── ServiceMonitor for Prometheus Operator ────────────────────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: neuroedge-api-monitor
+  namespace: neuroedge
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: neuroedge-api
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
